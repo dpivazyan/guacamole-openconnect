@@ -1,0 +1,75 @@
+version: '3'
+services:
+  ovpn:
+    image: ovpn
+    privileged: true
+    ports:
+    - 7443:443
+    environment:
+      VPN_SERVER: 'Your server here'
+      USER: "Your user name here"
+      PASS: 'Your password'
+      #AUTH_GROUP: 'Auth group' 
+      #SEARCH_DOMAINS: 'domain1 domain2 domain3'
+      #OTP
+    cap_add:
+      - "NET_ADMIN"
+    restart: "unless-stopped"
+    volumes:
+    - ./openconnect.sh:/ovpn/openconnect.sh
+    networks:
+      guacnetwork_compose:
+  guacd:
+    tty: true
+    stdin_open: true
+    privileged: true
+    image: guacamole/guacd
+    restart: always
+    environment:
+      GUACD_LOG_LEVEL: debug
+    volumes:
+    - ./drive:/drive:rw
+    - ./record:/record:rw
+    network_mode: "service:ovpn"
+  guacamole:
+    depends_on:
+    - guacd
+    privileged: true
+    environment:
+      LOG_LEVEL: debug
+      WEBAPP_CONTEXT: 'ROOT'
+      GUACD_HOSTNAME: localhost
+      POSTGRES_DATABASE: postgres
+      POSTGRES_HOSTNAME: localhost
+      POSTGRES_PASSWORD: 'Password123+'
+      POSTGRES_USER: postgres
+    tty: true
+    stdin_open: true
+    image: guacamole/guacamole
+    restart: always
+    network_mode: "service:ovpn"
+  postgres:
+    container_name: postgres
+    image: postgres:15.2-alpine
+    environment:
+      POSTGRES_USER: postgres
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_PASSWORD: Password123+
+    command: postgres -c 'max_connections=500'
+    volumes:
+      - ./data:/var/lib/postgresql/data
+      - ./init/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:z
+    network_mode: "service:ovpn"
+  nginx:
+    container_name: nginx_guacamole_compose
+    restart: always
+    image: nginx
+    volumes:
+    - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./nginx/ssl/self.cert:/etc/nginx/ssl/self.cert:ro
+    - ./nginx/ssl/self-ssl.key:/etc/nginx/ssl/self-ssl.key:ro
+    network_mode: "service:ovpn"
+
+networks:
+  guacnetwork_compose:
+    driver: bridge
